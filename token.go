@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"unicode"
 )
 
@@ -54,19 +55,41 @@ const (
 type sprintFn func(...interface{}) string
 
 // mapping of token types to the appropriate color sprintFn
-var sprintFns = map[tokenTyp]sprintFn{
-	typBare:        bareColor.SprintFunc(),
-	typNumericKey:  numColor.SprintFunc(),
-	typQuotedKey:   strColor.SprintFunc(),
-	typLBrace:      braceColor.SprintFunc(),
-	typRBrace:      braceColor.SprintFunc(),
-	typString:      strColor.SprintFunc(),
-	typNumber:      numColor.SprintFunc(),
-	typTrue:        boolColor.SprintFunc(),
-	typFalse:       boolColor.SprintFunc(),
-	typNull:        boolColor.SprintFunc(),
-	typEmptyArray:  braceColor.SprintFunc(),
-	typEmptyObject: braceColor.SprintFunc(),
+var sprintFns = newSprintFns()
+
+func newSprintFns() map[tokenTyp]sprintFn {
+	return map[tokenTyp]sprintFn{
+		typBare:        bareColor.SprintFunc(),
+		typNumericKey:  numColor.SprintFunc(),
+		typQuotedKey:   strColor.SprintFunc(),
+		typLBrace:      braceColor.SprintFunc(),
+		typRBrace:      braceColor.SprintFunc(),
+		typString:      strColor.SprintFunc(),
+		typNumber:      numColor.SprintFunc(),
+		typTrue:        boolColor.SprintFunc(),
+		typFalse:       boolColor.SprintFunc(),
+		typNull:        boolColor.SprintFunc(),
+		typEmptyArray:  braceColor.SprintFunc(),
+		typEmptyObject: braceColor.SprintFunc(),
+	}
+}
+
+func refreshSprintFns() {
+	sprintFns = newSprintFns()
+}
+
+func setTokenColors(enabled bool) {
+	for _, c := range []interface {
+		EnableColor()
+		DisableColor()
+	}{strColor, braceColor, bareColor, numColor, boolColor} {
+		if enabled {
+			c.EnableColor()
+			continue
+		}
+		c.DisableColor()
+	}
+	refreshSprintFns()
 }
 
 // isValue returns true if the token is a valid value type
@@ -103,12 +126,36 @@ func (t token) formatColor() string {
 	if t.typ == typEquals {
 		text = " " + text + " "
 	}
+	if t.typ == typString {
+		text = terminalSafeString(text)
+	}
 	fn, ok := sprintFns[t.typ]
 	if ok {
 		return fn(text)
 	}
 	return text
 
+}
+
+func terminalSafeString(text string) string {
+	parts := strings.SplitAfter(text, `\u001B`)
+	if len(parts) == 1 {
+		return text
+	}
+	for i := 1; i < len(parts); i++ {
+		if isTerminalControl(parts[i]) {
+			continue
+		}
+		parts[i] = strings.ToLower(parts[i])
+	}
+	return strings.Join(parts, "")
+}
+
+func isTerminalControl(text string) bool {
+	if len(text) < 2 || text[0] != '[' {
+		return false
+	}
+	return unicode.IsDigit(rune(text[1])) || text[2] == ';'
 }
 
 // valueTokenFromInterface takes any valid value and

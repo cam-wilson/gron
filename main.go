@@ -168,8 +168,10 @@ func main() {
 	switch {
 	case colorizeFlag:
 		color.NoColor = false
+		setTokenColors(true)
 	case monochromeFlag || color.NoColor:
 		opts = opts | optMonochrome
+		setTokenColors(false)
 	}
 	if noSortFlag {
 		opts = opts | optNoSort
